@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 import random
 import time
+import os
 
 app = FastAPI()
 
@@ -35,4 +36,5 @@ def get_rover_data():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 8080))  # Use PORT from environment
+    uvicorn.run(app, host="0.0.0.0", port=port)
