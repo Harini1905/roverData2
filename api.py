@@ -56,6 +56,7 @@ def move_rover_continuously(session_id, rover_id, direction):
             return
         
         sessions[session_id][rover_id]["coordinates"] = new_position
+        sessions[session_id][rover_id]["battery"] -= 1  # Battery drains with movement
         time.sleep(1)
 
 @app.post("/api/session/start")
@@ -77,6 +78,18 @@ def start_session():
     
     sessions[session_id] = fleet_status
     return {"session_id": session_id, "message": "Session started. Use this ID for API calls."}
+
+@app.get("/api/fleet/status")
+def get_fleet_status(session_id: str):
+    """Returns the fleet status for a specific session."""
+    return sessions.get(session_id, {"error": "Invalid session ID"})
+
+@app.get("/api/rover/{rover_id}/status")
+def get_rover_status(session_id: str, rover_id: str):
+    """Returns the status of a specific rover."""
+    if session_id in sessions and rover_id in sessions[session_id]:
+        return sessions[session_id][rover_id]
+    return {"error": "Invalid session or rover ID"}
 
 @app.post("/api/rover/{rover_id}/stop")
 def stop_rover(session_id: str, rover_id: str):
