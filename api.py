@@ -131,5 +131,6 @@ def get_sensor_data(session_id: str, rover_id: str):
     return {"error": "Invalid session or rover ID"}
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))  # Railway uses PORT env variable
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=port)
