@@ -5,26 +5,21 @@ import os
 
 app = FastAPI()
 
-# Persistent storage for rover states
-rovers = {}
+# Persistent storage for rover state
+rover = {
+    "timestamp": time.time(),
+    "position": {"x": round(random.uniform(0, 100), 2), "y": round(random.uniform(0, 100), 2)},
+    "ultrasonic_distance": round(random.uniform(1.0, 5.0), 2),  # Start with open space
+    "ir_signal_strength": 0.0,  # No detection initially
+    "rfid_detected": False,  # No survivor detected
+    "accelerometer": {"x": 0.0, "y": 0.0, "z": 0.0},
+    "battery_level": 100.0,  # Start fully charged
+    "communication_status": "Connected",  # Assume good connection initially
+    "recharging": False  # Flag to indicate recharging status
+}
 
-def initialize_rover(rover_id):
-    """Initialize rover with realistic sensor values"""
-    return {
-        "timestamp": time.time(),
-        "position": {"x": round(random.uniform(0, 100), 2), "y": round(random.uniform(0, 100), 2)},
-        "ultrasonic_distance": round(random.uniform(1.0, 5.0), 2),  # Start with open space
-        "ir_signal_strength": 0.0,  # No detection initially
-        "rfid_detected": False,  # No survivor detected
-        "accelerometer": {"x": 0.0, "y": 0.0, "z": 0.0},
-        "battery_level": 100.0,  # Start fully charged
-        "communication_status": "Connected",  # Assume good connection initially
-        "recharging": False  # Flag to indicate recharging status
-    }
-
-def update_rover_data(rover_id):
+def update_rover_data():
     """Update rover data realistically over time."""
-    rover = rovers.get(rover_id, initialize_rover(rover_id))
     rover["timestamp"] = time.time()
     
     # Smooth position change (simulate real movement)
@@ -70,17 +65,16 @@ def update_rover_data(rover_id):
     else:
         rover["communication_status"] = random.choice(["Connected", "Intermittent", "Lost"])
     
-    rovers[rover_id] = rover
     return rover
 
 @app.get("/")
 def read_root():
     return {"message": "Disaster Rover API is running!"}
 
-@app.get("/api/disaster-rover-data/{rover_id}")
-def get_rover_data(rover_id: str):
+@app.get("/api/disaster-rover-data")
+def get_rover_data():
     """Fetch realistic rover sensor data"""
-    return update_rover_data(rover_id)
+    return update_rover_data()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))  # Railway uses PORT env variable
