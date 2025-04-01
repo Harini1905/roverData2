@@ -7,11 +7,8 @@ import threading
 app = FastAPI()
 
 sessions = {}
-
-# Define a fixed 2D map with obstacles and RFID points
-MAP_SIZE = (20, 20)
-OBSTACLES = {(5, 5), (10, 10), (15, 15)}  # Obstacles at fixed positions
-RFID_POINTS = {(3, 3), (12, 8), (18, 18)}  # RFID detection points
+MAP_SIZE = (200, 200)  # Larger continuous space
+OBSTACLE_COUNT = 15  # Number of obstacles per session
 
 MOVEMENT_DELTAS = {
     "forward": (0, 1),
@@ -20,11 +17,14 @@ MOVEMENT_DELTAS = {
     "right": (1, 0)
 }
 
-def generate_sensor_data(position, battery_level):
+def generate_obstacles():
+    """Generates random obstacles in a continuous space."""
+    return {(random.uniform(0, MAP_SIZE[0]), random.uniform(0, MAP_SIZE[1])) for _ in range(OBSTACLE_COUNT)}
+
+def generate_sensor_data(position, battery_level, obstacles):
     """Generates realistic sensor data based on map conditions."""
     x, y = position
-    obstacle_detected = (x, y) in OBSTACLES
-    rfid_detected = (x, y) in RFID_POINTS
+    obstacle_detected = any(abs(x - ox) < 1 and abs(y - oy) < 1 for ox, oy in obstacles)
     
     accelerometer = {
         "x": round(random.uniform(-0.2, 0.2), 2),
@@ -37,7 +37,6 @@ def generate_sensor_data(position, battery_level):
         "position": {"x": x, "y": y},
         "ultrasonic_distance": 0 if obstacle_detected else round(random.uniform(1.0, 10.0), 2),
         "ir_signal_strength": 1 if obstacle_detected else 0,
-        "rfid_detected": rfid_detected,
         "accelerometer": accelerometer,
         "battery_level": round(battery_level, 2),
         "communication_status": "Active" if battery_level > 10 else "Intermittent",
@@ -51,7 +50,7 @@ def move_rover_continuously(session_id, direction):
         x, y = sessions[session_id]["coordinates"]
         new_position = (x + dx, y + dy)
         
-        if new_position in OBSTACLES:
+        if any(abs(new_position[0] - ox) < 1 and abs(new_position[1] - oy) < 1 for ox, oy in sessions[session_id]["obstacles"]):
             sessions[session_id]["status"] = "Stopped - Obstacle Detected"
             return
         
@@ -61,18 +60,20 @@ def move_rover_continuously(session_id, direction):
 
 @app.post("/api/session/start")
 def start_session():
-    """Creates a new session with a single rover."""
+    """Creates a new session."""
     session_id = str(uuid.uuid4())
-    new_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
-    while new_position in OBSTACLES:
-        new_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
+    obstacles = generate_obstacles()
+    
+    start_position = (random.uniform(0, MAP_SIZE[0]), random.uniform(0, MAP_SIZE[1]))
+    while any(abs(start_position[0] - ox) < 1 and abs(start_position[1] - oy) < 1 for ox, oy in obstacles):
+        start_position = (random.uniform(0, MAP_SIZE[0]), random.uniform(0, MAP_SIZE[1]))
     
     sessions[session_id] = {
-        "status": "idle", 
-        "battery": random.randint(50, 100), 
-        "coordinates": new_position,
+        "status": "idle",
+        "battery": random.randint(50, 100),
+        "coordinates": start_position,
+        "obstacles": obstacles
     }
-    
     return {"session_id": session_id, "message": "Session started. Use this ID for API calls."}
 
 @app.get("/api/rover/status")
@@ -82,7 +83,7 @@ def get_rover_status(session_id: str):
 
 @app.post("/api/rover/stop")
 def stop_rover(session_id: str):
-    """Stops the movement of the rover."""
+    """Stops the rover."""
     if session_id in sessions:
         sessions[session_id]["status"] = "idle"
         return {"message": "Rover has stopped."}
@@ -102,13 +103,10 @@ def move_rover(session_id: str, direction: str):
 
 @app.get("/api/rover/sensor-data")
 def get_sensor_data(session_id: str):
-    """Fetches realistic sensor data based on the rover's current position."""
+    """Fetches sensor data based on the rover's current position."""
     if session_id in sessions:
         position = sessions[session_id]["coordinates"]
         battery_level = sessions[session_id]["battery"]
-        return generate_sensor_data(position, battery_level)
+        obstacles = sessions[session_id]["obstacles"]
+        return generate_sensor_data(position, battery_level, obstacles)
     return {"error": "Invalid session ID"}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
