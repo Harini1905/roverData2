@@ -90,6 +90,11 @@ def get_rover_status(session_id: str, rover_id: str):
     if session_id in sessions and rover_id in sessions[session_id]:
         return sessions[session_id][rover_id]
     return {"error": "Invalid session or rover ID"}
+    
+@app.get("/api/disaster-rover-data")
+def get_disaster_rover_data():
+    return {"message": "Disaster rover data endpoint is working!"}
+
 
 @app.post("/api/rover/{rover_id}/stop")
 def stop_rover(session_id: str, rover_id: str):
