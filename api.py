@@ -7,8 +7,8 @@ import threading
 app = FastAPI()
 
 sessions = {}
-MAP_SIZE = (200, 200)  # Larger continuous space
-OBSTACLE_COUNT = 15  # Number of obstacles per session
+MAP_SIZE = (250, 250)  # Larger grid-based space
+OBSTACLE_COUNT = 20  # Number of obstacles per session
 
 MOVEMENT_DELTAS = {
     "forward": (0, 1),
@@ -18,14 +18,12 @@ MOVEMENT_DELTAS = {
 }
 
 def generate_obstacles():
-    """Generates random obstacles in a continuous space."""
-    return {(random.uniform(0, MAP_SIZE[0]), random.uniform(0, MAP_SIZE[1])) for _ in range(OBSTACLE_COUNT)}
+    """Generates random obstacles in a grid-based space."""
+    return {(random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1)) for _ in range(OBSTACLE_COUNT)}
 
-def generate_sensor_data(position, battery_level, obstacles):
+def generate_sensor_data(position, battery_level):
     """Generates realistic sensor data based on map conditions."""
     x, y = position
-    obstacle_detected = any(abs(x - ox) < 1 and abs(y - oy) < 1 for ox, oy in obstacles)
-    
     accelerometer = {
         "x": round(random.uniform(-0.2, 0.2), 2),
         "y": round(random.uniform(-0.2, 0.2), 2),
@@ -35,8 +33,6 @@ def generate_sensor_data(position, battery_level, obstacles):
     return {
         "timestamp": time.time(),
         "position": {"x": x, "y": y},
-        "ultrasonic_distance": 0 if obstacle_detected else round(random.uniform(1.0, 10.0), 2),
-        "ir_signal_strength": 1 if obstacle_detected else 0,
         "accelerometer": accelerometer,
         "battery_level": round(battery_level, 2),
         "communication_status": "Active" if battery_level > 10 else "Intermittent",
@@ -50,7 +46,7 @@ def move_rover_continuously(session_id, direction):
         x, y = sessions[session_id]["coordinates"]
         new_position = (x + dx, y + dy)
         
-        if any(abs(new_position[0] - ox) < 1 and abs(new_position[1] - oy) < 1 for ox, oy in sessions[session_id]["obstacles"]):
+        if new_position in sessions[session_id]["obstacles"]:
             sessions[session_id]["status"] = "Stopped - Obstacle Detected"
             return
         
@@ -64,9 +60,9 @@ def start_session():
     session_id = str(uuid.uuid4())
     obstacles = generate_obstacles()
     
-    start_position = (random.uniform(0, MAP_SIZE[0]), random.uniform(0, MAP_SIZE[1]))
-    while any(abs(start_position[0] - ox) < 1 and abs(start_position[1] - oy) < 1 for ox, oy in obstacles):
-        start_position = (random.uniform(0, MAP_SIZE[0]), random.uniform(0, MAP_SIZE[1]))
+    start_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
+    while start_position in obstacles:
+        start_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
     
     sessions[session_id] = {
         "status": "idle",
@@ -78,8 +74,12 @@ def start_session():
 
 @app.get("/api/rover/status")
 def get_rover_status(session_id: str):
-    """Returns the status of the rover."""
-    return sessions.get(session_id, {"error": "Invalid session ID"})
+    """Returns the status of the rover without obstacle coordinates."""
+    if session_id in sessions:
+        rover_status = sessions[session_id].copy()
+        del rover_status["obstacles"]
+        return rover_status
+    return {"error": "Invalid session ID"}
 
 @app.post("/api/rover/stop")
 def stop_rover(session_id: str):
@@ -107,6 +107,5 @@ def get_sensor_data(session_id: str):
     if session_id in sessions:
         position = sessions[session_id]["coordinates"]
         battery_level = sessions[session_id]["battery"]
-        obstacles = sessions[session_id]["obstacles"]
-        return generate_sensor_data(position, battery_level, obstacles)
+        return generate_sensor_data(position, battery_level)
     return {"error": "Invalid session ID"}
