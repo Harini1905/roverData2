@@ -87,6 +87,18 @@ def move_rover_continuously(session_id, direction):
         
         time.sleep(1)
 
+@app.post("/api/rover/charge")
+def charge_rover(session_id: str):
+    """Charges the rover battery over time."""
+    if session_id in sessions:
+        sessions[session_id]["status"] = "Charging"
+        while sessions[session_id]["battery"] < 100:
+            sessions[session_id]["battery"] += 10
+            time.sleep(1)
+        sessions[session_id]["status"] = "Idle"
+        return {"message": "Rover fully charged."}
+    return {"error": "Invalid session ID"}
+
 @app.post("/api/session/start")
 def start_session():
     """Creates a new session."""
