@@ -1,3 +1,5 @@
+Python 3.12.0 (tags/v3.12.0:0fb18b0, Oct  2 2023, 13:03:39) [MSC v.1935 64 bit (AMD64)] on win32
+Type "help", "copyright", "credits" or "license()" for more information.
 from fastapi import FastAPI
 import random
 import time
@@ -20,7 +22,7 @@ MOVEMENT_DELTAS = {
     "right": (1, 0)
 }
 
-def generate_sensor_data(rover_id, position, battery_level):
+def generate_sensor_data(position, battery_level):
     """Generates realistic sensor data based on map conditions."""
     x, y = position
     obstacle_detected = (x, y) in OBSTACLES
@@ -44,86 +46,69 @@ def generate_sensor_data(rover_id, position, battery_level):
         "recharging": battery_level < 80 and battery_level > 5
     }
 
-def move_rover_continuously(session_id, rover_id, direction):
+def move_rover_continuously(session_id, direction):
     """Moves the rover, stops if an obstacle is detected."""
-    while sessions[session_id][rover_id]["status"] == f"Moving {direction}":
+    while sessions[session_id]["status"] == f"Moving {direction}":
         dx, dy = MOVEMENT_DELTAS[direction]
-        x, y = sessions[session_id][rover_id]["coordinates"]
+        x, y = sessions[session_id]["coordinates"]
         new_position = (x + dx, y + dy)
         
         if new_position in OBSTACLES:
-            sessions[session_id][rover_id]["status"] = "Stopped - Obstacle Detected"
+            sessions[session_id]["status"] = "Stopped - Obstacle Detected"
             return
         
-        sessions[session_id][rover_id]["coordinates"] = new_position
-        sessions[session_id][rover_id]["battery"] -= 1  # Battery drains with movement
+        sessions[session_id]["coordinates"] = new_position
+        sessions[session_id]["battery"] -= 1  # Battery drains with movement
         time.sleep(1)
 
 @app.post("/api/session/start")
 def start_session():
-    """Creates a new session with a fleet."""
+    """Creates a new session with a single rover."""
     session_id = str(uuid.uuid4())
-    fleet_status = {}
-    
-    for i in range(1, 6):
+    new_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
+    while new_position in OBSTACLES:
         new_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
-        while new_position in OBSTACLES:
-            new_position = (random.randint(0, MAP_SIZE[0] - 1), random.randint(0, MAP_SIZE[1] - 1))
-        
-        fleet_status[f"Rover-{i}"] = {
-            "status": "idle", 
-            "battery": random.randint(50, 100), 
-            "coordinates": new_position,
-        }
     
-    sessions[session_id] = fleet_status
+    sessions[session_id] = {
+        "status": "idle", 
+        "battery": random.randint(50, 100), 
+        "coordinates": new_position,
+    }
     return {"session_id": session_id, "message": "Session started. Use this ID for API calls."}
 
-@app.get("/api/fleet/status")
-def get_fleet_status(session_id: str):
-    """Returns the fleet status for a specific session."""
+@app.get("/api/rover/status")
+def get_rover_status(session_id: str):
+    """Returns the status of the rover."""
     return sessions.get(session_id, {"error": "Invalid session ID"})
 
-@app.get("/api/rover/{rover_id}/status")
-def get_rover_status(session_id: str, rover_id: str):
-    """Returns the status of a specific rover."""
-    if session_id in sessions and rover_id in sessions[session_id]:
-        return sessions[session_id][rover_id]
-    return {"error": "Invalid session or rover ID"}
-    
-@app.get("/api/disaster-rover-data")
-def get_disaster_rover_data():
-    return {"message": "Disaster rover data endpoint is working!"}
+@app.post("/api/rover/stop")
+def stop_rover(session_id: str):
+    """Stops the movement of the rover."""
+    if session_id in sessions:
+        sessions[session_id]["status"] = "idle"
+        return {"message": "Rover has stopped."}
+    return {"error": "Invalid session ID"}
 
-
-@app.post("/api/rover/{rover_id}/stop")
-def stop_rover(session_id: str, rover_id: str):
-    """Stops the movement of a specific rover."""
-    if session_id in sessions and rover_id in sessions[session_id]:
-        sessions[session_id][rover_id]["status"] = "idle"
-        return {"message": f"{rover_id} has stopped."}
-    return {"error": "Invalid session or rover ID"}
-
-@app.post("/api/rover/{rover_id}/move")
-def move_rover(session_id: str, rover_id: str, direction: str):
+@app.post("/api/rover/move")
+def move_rover(session_id: str, direction: str):
     """Moves the rover if no obstacle is detected."""
-    if session_id in sessions and rover_id in sessions[session_id]:
+    if session_id in sessions:
         if direction not in MOVEMENT_DELTAS:
             return {"error": "Invalid direction. Use forward, backward, left, or right."}
         
-        sessions[session_id][rover_id]["status"] = f"Moving {direction}"
-        threading.Thread(target=move_rover_continuously, args=(session_id, rover_id, direction), daemon=True).start()
-        return {"message": f"{rover_id} started moving {direction}"}
-    return {"error": "Invalid session or rover ID"}
+        sessions[session_id]["status"] = f"Moving {direction}"
+        threading.Thread(target=move_rover_continuously, args=(session_id, direction), daemon=True).start()
+        return {"message": f"Rover started moving {direction}"}
+    return {"error": "Invalid session ID"}
 
-@app.get("/api/rover/{rover_id}/sensor-data")
-def get_sensor_data(session_id: str, rover_id: str):
+@app.get("/api/rover/sensor-data")
+def get_sensor_data(session_id: str):
     """Fetches realistic sensor data based on the rover's current position."""
-    if session_id in sessions and rover_id in sessions[session_id]:
-        position = sessions[session_id][rover_id]["coordinates"]
-        battery_level = sessions[session_id][rover_id]["battery"]
-        return generate_sensor_data(rover_id, position, battery_level)
-    return {"error": "Invalid session or rover ID"}
+    if session_id in sessions:
+        position = sessions[session_id]["coordinates"]
+        battery_level = sessions[session_id]["battery"]
+        return generate_sensor_data(position, battery_level)
+    return {"error": "Invalid session ID"}
 
 if __name__ == "__main__":
     import uvicorn
